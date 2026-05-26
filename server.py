@@ -501,10 +501,12 @@ async def hold(
     importance: int = 5,
     pinned: bool = False,
     feel: bool = False,
-    source_bucket: str = "",    valence: float = -1,
+    source_bucket: str = "",
+    valence: float = -1,
     arousal: float = -1,
+    name: str = "",
 ) -> str:
-    """存储单条记忆,自动打标+合并。tags逗号分隔,importance 1-10。pinned=True创建永久钉选桶。feel=True存储你的第一人称感受(不参与普通浮现)。source_bucket=被消化的记忆桶ID(feel模式下,标记源记忆为已消化)。"""
+    """存储单条记忆,自动打标+合并。tags逗号分隔,importance 1-10。pinned=True创建永久钉选桶。feel=True存储你的第一人称感受(不参与普通浮现)。source_bucket=被消化的记忆桶ID(feel模式下,标记源记忆为已消化)。name=feel桶的���字(可选,不传则无名)。"""
     await decay_engine.ensure_started()
 
     # --- Input validation / 输入校验 ---
@@ -527,7 +529,7 @@ async def hold(
             domain=[],
             valence=feel_valence,
             arousal=feel_arousal,
-            name=None,
+            name=name.strip() if name and name.strip() else None,
             bucket_type="feel",
         )
         try:
