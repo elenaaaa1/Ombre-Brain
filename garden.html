@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Cotton Candy · 记忆花园</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  ::-webkit-scrollbar { width: 0; height: 0; }
+  * { scrollbar-width: none; }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes overlayIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(40px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateY(16px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes toastOut {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 0; transform: translateY(-8px) scale(0.95); }
+  }
+</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef, useMemo, createContext, useContext } = React;
+
+// ─── Design Tokens ───────────────────────────────────────────
+const PALETTES = {
+  day: {
+    bg: '#F5F0E8',
+    bgGradient: 'radial-gradient(ellipse at 25% 15%, #FAF7F2 0%, #F5F0E8 50%, #EDE6D8 100%)',
+    paper: '#FAF7F2',
+    card: '#FFFDF9',
+    text: '#3D3529',
+    textMuted: '#8A7E6B',
+    accent: '#B85C3A',
+    accent2: '#7E9BAB',
+    hairline: 'rgba(61,53,41,0.10)',
+    inputBg: 'rgba(61,53,41,0.04)',
+    shadowSoft: '0 1px 2px rgba(61,53,41,0.04), 0 8px 24px rgba(61,53,41,0.05)',
+    shadowHover: '0 2px 4px rgba(61,53,41,0.06), 0 12px 32px rgba(61,53,41,0.08)',
+    overlayBg: 'rgba(61,53,41,0.35)',
+    toastBg: '#FFFDF9',
+    cardBorder: 'none',
+  },
+  night: {
+    bg: '#1A1A1E',
+    bgGradient: 'radial-gradient(ellipse at 25% 15%, #222226 0%, #1A1A1E 50%, #151517 100%)',
+    paper: '#1E1E22',
+    card: '#242428',
+    text: '#E8E0D4',
+    textMuted: '#9A9083',
+    accent: '#C4785A',
+    accent2: '#8AAABB',
+    hairline: 'rgba(232,224,212,0.10)',
+    inputBg: 'rgba(232,224,212,0.05)',
+    shadowSoft: '0 1px 2px rgba(0,0,0,0.4), 0 12px 24px rgba(0,0,0,0.35)',
+    shadowHover: '0 2px 4px rgba(0,0,0,0.5), 0 16px 32px rgba(0,0,0,0.4)',
+    overlayBg: 'rgba(0,0,0,0.6)',
+    toastBg: '#2C2C30',
+    cardBorder: '0.5px solid rgba(232,224,212,0.10)',
+  },
+};
+
+const FONTS = {
+  serif: '"Source Serif 4", Georgia, serif',
+  sans: '"Inter", -apple-system, system-ui, sans-serif',
+  mono: '"JetBrains Mono", ui-monospace, monospace',
+};
+
+const TRANSITION = '220ms cubic-bezier(0.4, 0.0, 0.2, 1)';
+
+// ─── Filters ─────────────────────────────────────────────────
+const FILTERS = [
+  { key: 'all',       label: '全部',   icon: null },
+  { key: 'pinned',    label: '钉选',   icon: 'pinned' },
+  { key: 'feel',      label: 'Feel',   icon: 'feel' },
+  { key: 'unresolved',label: '未解决', icon: 'unresolved' },
+  { key: 'digested',  label: '已消化', icon: 'digested' },
+  { key: 'archived',  label: '归档',   icon: 'archived' },
+];
+
+// ─── SVG Marker Icons ────────────────────────────────────────
+function FilterIcon({ type, color, size = 10 }) {
+  const s = size;
+  const c = color;
+  switch (type) {
+    case 'pinned':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill={c} /></svg>;
+    case 'feel':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" fill="none" stroke={c} strokeWidth="1.2" /></svg>;
+    case 'unresolved':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><polygon points="5,1.5 9,8.5 1,8.5" fill="none" stroke={c} strokeWidth="1.2" /></svg>;
+    case 'digested':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" fill={c} rx="1" /></svg>;
+    case 'archived':
+      return <svg width={s} height={s} viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" fill="none" stroke={c} strokeWidth="1.2" /></svg>;
+    default:
+      return null;
+  }
+}
+
+// ─── Theme Context ───────────────────────────────────────────
+const ThemeContext = createContext();
+
+function useTheme() {
+  return useContext(ThemeContext);
+}
+
+// ─── Mood Color ──────────────────────────────────────────────
+function getMoodColor(bucket, palette) {
+  if (bucket.pinned) return palette.accent;
+  const v = bucket.valence ?? 0.5;
+  if (v >= 0.7) return '#6B9B7A';
+  if (v >= 0.4) return palette.accent2;
+  if (v >= 0.2) return '#C4A45A';
+  return '#B85C6A';
+}
+
+// ─── Time formatting ─────────────────────────────────────────
+function formatTime(isoStr) {
+  if (!isoStr) return '--';
+  try {
+    const d = new Date(isoStr);
+    const now = new Date();
+    const diff = now - d;
+    if (diff < 60000) return '刚刚';
+    if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前';
+    if (diff < 604800000) return Math.floor(diff / 86400000) + '天前';
+    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  } catch { return '--'; }
+}
+
+// ─── Toast System ────────────────────────────────────────────
+const ToastContext = createContext();
+
+function ToastProvider({ children }) {
+  const [toasts, setToasts] = useState([]);
+  const idRef = useRef(0);
+
+  const addToast = useCallback((message, type = 'info') => {
+    const id = ++idRef.current;
+    setToasts(prev => [...prev, { id, message, type, exiting: false }]);
+    setTimeout(() => {
+      setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300);
+    }, 2400);
+  }, []);
+
+  return (
+    <ToastContext.Provider value={addToast}>
+      {children}
+      <ToastContainer toasts={toasts} />
+    </ToastContext.Provider>
+  );
+}
+
+function useToast() {
+  return useContext(ToastContext);
+}
+
+function ToastContainer({ toasts }) {
+  const p = useTheme();
+  return (
+    <div style={{
+      position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)',
+      zIndex: 10000, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+      pointerEvents: 'none',
+    }}>
+      {toasts.map(t => (
+        <div key={t.id} style={{
+          background: p.toastBg,
+          color: p.text,
+          border: `1px solid ${p.hairline}`,
+          boxShadow: p.shadowHover,
+          borderRadius: 14,
+          padding: '10px 20px',
+          fontFamily: FONTS.sans,
+          fontSize: 13,
+          fontWeight: 500,
+          animation: t.exiting ? 'toastOut 300ms ease forwards' : 'toastIn 300ms ease forwards',
+          pointerEvents: 'auto',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: t.type === 'error' ? '#B85C6A' : t.type === 'success' ? '#6B9B7A' : p.accent,
+            flexShrink: 0,
+          }} />
+          {t.message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Header ──────────────────────────────────────────────────
+function Header({ stats, mode, onToggleMode, searchQuery, onSearch }) {
+  const p = useTheme();
+  const [localQ, setLocalQ] = useState(searchQuery);
+  const timerRef = useRef(null);
+
+  useEffect(() => { setLocalQ(searchQuery); }, [searchQuery]);
+
+  const handleInput = (e) => {
+    const v = e.target.value;
+    setLocalQ(v);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => onSearch(v), 350);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      clearTimeout(timerRef.current);
+      onSearch(localQ);
+    }
+    if (e.key === 'Escape') {
+      setLocalQ('');
+      onSearch('');
+    }
+  };
+
+  return (
+    <div style={{
+      padding: '20px 24px 16px',
+      background: mode === 'day'
+        ? 'rgba(250,247,242,0.85)'
+        : 'rgba(26,26,30,0.85)',
+      backdropFilter: 'blur(16px)',
+      WebkitBackdropFilter: 'blur(16px)',
+      borderBottom: `1px solid ${p.hairline}`,
+      position: 'sticky', top: 0, zIndex: 100,
+    }}>
+      {/* Title row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <h1 style={{
+            fontFamily: FONTS.serif, fontSize: 24, fontWeight: 600,
+            color: p.text, letterSpacing: '-0.3px',
+          }}>Memory</h1>
+          <span style={{
+            fontFamily: FONTS.sans, fontSize: 12, fontWeight: 400,
+            color: p.textMuted, letterSpacing: '0.3px',
+          }}>记忆花园</span>
+        </div>
+        {/* Day/Night toggle */}
+        <button onClick={onToggleMode} style={{
+          width: 36, height: 36, borderRadius: '50%',
+          border: `1px solid ${p.hairline}`,
+          background: p.inputBg,
+          cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: TRANSITION,
+          color: p.textMuted,
+          fontSize: 16,
+        }}
+          onMouseEnter={e => e.currentTarget.style.background = p.hairline}
+          onMouseLeave={e => e.currentTarget.style.background = p.inputBg}
+        >
+          {mode === 'day' ? (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          )}
+        </button>
+      </div>
+
+      {/* Stats row */}
+      <div style={{
+        display: 'flex', gap: 16, marginBottom: 14,
+        fontFamily: FONTS.mono, fontSize: 11, fontWeight: 400,
+        color: p.textMuted, letterSpacing: '0.2px',
+      }}>
+        <span>共 {stats.total}</span>
+        <span style={{ color: p.accent }}>● {stats.pinned} 钉选</span>
+        <span>◎ {stats.dynamic} 动态</span>
+        <span>○ {stats.feel} feel</span>
+        <span>✓ {stats.resolved} 已解决</span>
+        <span>■ {stats.digested} 消化</span>
+      </div>
+
+      {/* Search bar */}
+      <div style={{ position: 'relative' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={p.textMuted}
+          strokeWidth="2" strokeLinecap="round"
+          style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+        >
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input
+          type="text"
+          value={localQ}
+          onChange={handleInput}
+          onKeyDown={handleKeyDown}
+          placeholder="搜索记忆..."
+          style={{
+            width: '100%',
+            padding: '11px 16px 11px 40px',
+            borderRadius: 9999,
+            border: `1px solid ${p.hairline}`,
+            background: p.inputBg,
+            color: p.text,
+            fontFamily: FONTS.sans,
+            fontSize: 14,
+            outline: 'none',
+            transition: TRANSITION,
+          }}
+          onFocus={e => { e.target.style.borderColor = p.accent; e.target.style.boxShadow = `0 0 0 3px ${p.accent}22`; }}
+          onBlur={e => { e.target.style.borderColor = p.hairline; e.target.style.boxShadow = 'none'; }}
+        />
+        {localQ && (
+          <button onClick={() => { setLocalQ(''); onSearch(''); }} style={{
+            position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+            width: 24, height: 24, borderRadius: '50%',
+            border: 'none', background: p.inputBg,
+            color: p.textMuted, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 14, fontWeight: 500,
+          }}>×</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Filter Tabs ─────────────────────────────────────────────
+function FilterTabs({ active, onChange }) {
+  const p = useTheme();
+  return (
+    <div style={{
+      display: 'flex', gap: 6, padding: '12px 24px',
+      overflowX: 'auto',
+      borderBottom: `1px solid ${p.hairline}`,
+      background: 'transparent',
+    }}>
+      {FILTERS.map(f => {
+        const isActive = active === f.key;
+        return (
+          <button key={f.key} onClick={() => onChange(f.key)} style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '7px 16px',
+            borderRadius: 9999,
+            border: isActive ? `1px solid ${p.accent}44` : `1px solid ${p.hairline}`,
+            background: isActive ? `${p.accent}15` : p.inputBg,
+            color: isActive ? p.accent : p.textMuted,
+            fontFamily: FONTS.sans,
+            fontSize: 12.5,
+            fontWeight: isActive ? 500 : 400,
+            cursor: 'pointer',
+            transition: TRANSITION,
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}>
+            {f.icon && <FilterIcon type={f.icon} color={isActive ? p.accent : p.textMuted} size={9} />}
+            {f.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Bucket Card ─────────────────────────────────────────────
+function BucketCard({ bucket, onClick }) {
+  const p = useTheme();
+  const [pressed, setPressed] = useState(false);
+  const moodColor = getMoodColor(bucket, p);
+
+  const typeLabel = bucket.type === 'permanent' ? '核心' : bucket.type === 'feel' ? 'feel' : '动态';
+
+  return (
+    <div
+      onClick={() => onClick(bucket)}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      onMouseLeave={() => setPressed(false)}
+      style={{
+        display: 'flex',
+        background: p.card,
+        borderRadius: 22,
+        boxShadow: p.shadowSoft,
+        border: p.cardBorder || 'none',
+        overflow: 'hidden',
+        cursor: 'pointer',
+        transition: TRANSITION,
+        transform: pressed ? 'scale(0.985)' : 'scale(1)',
+        animation: 'fadeIn 350ms ease both',
+      }}
+    >
+      {/* Color bar */}
+      <div style={{
+        width: 4, minHeight: '100%', flexShrink: 0,
+        background: moodColor,
+        borderRadius: '22px 0 0 22px',
+      }} />
+
+      {/* Content */}
+      <div style={{
+        flex: 1, padding: '14px 16px', minWidth: 0,
+        display: 'flex', flexDirection: 'column', gap: 6,
+      }}>
+        {/* Title row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {bucket.pinned && <FilterIcon type="pinned" color={p.accent} size={8} />}
+          <span style={{
+            fontFamily: FONTS.serif, fontSize: 15, fontWeight: 600,
+            color: p.text, lineHeight: 1.3,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            flex: 1,
+          }}>
+            {bucket.name}
+          </span>
+          <span style={{
+            fontFamily: FONTS.mono, fontSize: 11, fontWeight: 400,
+            color: p.textMuted, flexShrink: 0,
+          }}>
+            {typeof bucket.score === 'number' ? bucket.score.toFixed(1) : '--'}
+          </span>
+        </div>
+
+        {/* Preview */}
+        <p style={{
+          fontFamily: FONTS.sans, fontSize: 12.5, lineHeight: 1.55,
+          color: p.textMuted,
+          overflow: 'hidden', textOverflow: 'ellipsis',
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+        }}>
+          {bucket.content_preview || '(empty)'}
+        </p>
+
+        {/* Bottom row: tags + meta */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2,
+        }}>
+          <span style={{
+            fontFamily: FONTS.mono, fontSize: 10, color: p.textMuted,
+            background: p.inputBg, padding: '2px 8px', borderRadius: 9999,
+          }}>{typeLabel}</span>
+          {(bucket.tags || []).slice(0, 3).map((tag, i) => (
+            <span key={i} style={{
+              fontFamily: FONTS.sans, fontSize: 10.5, color: p.textMuted,
+              background: p.inputBg, padding: '2px 8px', borderRadius: 9999,
+            }}>{tag}</span>
+          ))}
+          {(bucket.tags || []).length > 3 && (
+            <span style={{ fontFamily: FONTS.mono, fontSize: 10, color: p.textMuted }}>
+              +{bucket.tags.length - 3}
+            </span>
+          )}
+          <span style={{ flex: 1 }} />
+          <span style={{
+            fontFamily: FONTS.mono, fontSize: 10, color: p.textMuted, opacity: 0.7,
+          }}>
+            {formatTime(bucket.last_active || bucket.created)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bucket Detail Overlay ───────────────────────────────────
+function BucketDetail({ bucketSummary, onClose, onUpdated, onDeleted }) {
+  const p = useTheme();
+  const toast = useToast();
+  const [bucket, setBucket] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [editTags, setEditTags] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const overlayRef = useRef(null);
+
+  // Fetch full bucket
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/bucket/${bucketSummary.id}`)
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return;
+        setBucket(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        toast('加载失败: ' + err.message, 'error');
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [bucketSummary.id]);
+
+  // Close on escape
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  // Enter edit mode
+  const startEdit = () => {
+    if (!bucket) return;
+    setEditName(bucket.metadata?.name || bucket.id);
+    setEditContent(bucket.content || '');
+    setEditTags((bucket.metadata?.tags || []).join(', '));
+    setEditing(true);
+  };
+
+  // Save edits
+  const saveEdit = async () => {
+    setSaving(true);
+    try {
+      const body = {
+        name: editName,
+        content: editContent,
+        tags: editTags.split(',').map(t => t.trim()).filter(Boolean),
+      };
+      const res = await fetch(`/api/bucket/${bucket.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('保存失败');
+      toast('已保存', 'success');
+      setEditing(false);
+      // Refresh
+      const refreshed = await fetch(`/api/bucket/${bucket.id}`).then(r => r.json());
+      setBucket(refreshed);
+      onUpdated();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Toggle actions
+  const toggleField = async (field, value) => {
+    try {
+      const body = { [field]: value };
+      const res = await fetch(`/api/bucket/${bucket.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('操作失败');
+      const labels = { pinned: value ? '已钉选' : '取消钉选', resolved: value ? '已解决' : '标记未解决', digested: value ? '已消化' : '取消消化' };
+      toast(labels[field] || '已更新', 'success');
+      const refreshed = await fetch(`/api/bucket/${bucket.id}`).then(r => r.json());
+      setBucket(refreshed);
+      onUpdated();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+
+  // Delete
+  const doDelete = async () => {
+    try {
+      const res = await fetch(`/api/bucket/${bucket.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('删除失败');
+      toast('已删除', 'success');
+      onDeleted(bucket.id);
+      onClose();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+
+  const meta = bucket?.metadata || {};
+
+  // Metadata grid items
+  const metaItems = bucket ? [
+    { label: 'ID', value: bucket.id, mono: true },
+    { label: '类型', value: meta.type || 'dynamic' },
+    { label: 'Domain', value: (meta.domain || []).join(', ') || '--' },
+    { label: 'Tags', value: (meta.tags || []).join(', ') || '--' },
+    { label: 'Valence', value: (meta.valence ?? 0.5).toFixed(2) },
+    { label: 'Arousal', value: (meta.arousal ?? 0.3).toFixed(2) },
+    { label: 'Importance', value: meta.importance ?? 5 },
+    { label: 'Score', value: (bucket.score ?? 0).toFixed(1) },
+    { label: '激活次数', value: meta.activation_count ?? 1 },
+    { label: 'Resolved', value: meta.resolved ? '是' : '否' },
+    { label: 'Digested', value: meta.digested ? '是' : '否' },
+    { label: 'Pinned', value: meta.pinned ? '是' : '否' },
+    { label: '创建', value: formatTime(meta.created) },
+    { label: '最后活跃', value: formatTime(meta.last_active) },
+  ] : [];
+
+  // Action button style
+  const actionBtn = (accent = false) => ({
+    padding: '8px 18px',
+    borderRadius: 9999,
+    border: accent ? 'none' : `1px solid ${p.hairline}`,
+    background: accent ? p.accent : p.inputBg,
+    color: accent ? '#fff' : p.text,
+    fontFamily: FONTS.sans,
+    fontSize: 12.5,
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: TRANSITION,
+    display: 'flex', alignItems: 'center', gap: 5,
+  });
+
+  return (
+    <div ref={overlayRef} onClick={(e) => { if (e.target === overlayRef.current) onClose(); }} style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: p.overlayBg,
+      backdropFilter: 'blur(8px)',
+      WebkitBackdropFilter: 'blur(8px)',
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      animation: 'overlayIn 200ms ease',
+    }}>
+      <div style={{
+        width: '100%', maxWidth: 800,
+        maxHeight: '92vh',
+        background: p.paper,
+        borderRadius: '26px 26px 0 0',
+        overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+        animation: 'slideUp 300ms ease',
+      }}>
+        {/* Top bar */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '16px 24px 12px',
+          borderBottom: `1px solid ${p.hairline}`,
+          flexShrink: 0,
+        }}>
+          <span style={{ fontFamily: FONTS.sans, fontSize: 12, color: p.textMuted }}>
+            记忆详情
+          </span>
+          <button onClick={onClose} style={{
+            width: 32, height: 32, borderRadius: '50%',
+            border: 'none', background: p.inputBg, color: p.textMuted,
+            cursor: 'pointer', fontSize: 18, fontWeight: 300,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: TRANSITION,
+          }}>×</button>
+        </div>
+
+        {/* Scrollable content */}
+        <div style={{
+          flex: 1, overflowY: 'auto', padding: '20px 24px 32px',
+        }}>
+          {loading ? (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              minHeight: 200, color: p.textMuted, fontFamily: FONTS.sans, fontSize: 14,
+            }}>
+              <span style={{
+                display: 'inline-block', width: 20, height: 20,
+                border: `2px solid ${p.hairline}`, borderTopColor: p.accent,
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+              }} />
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              <span style={{ marginLeft: 10 }}>加载中...</span>
+            </div>
+          ) : !bucket ? (
+            <div style={{ textAlign: 'center', color: p.textMuted, padding: 40 }}>
+              未找到
+            </div>
+          ) : (
+            <>
+              {/* Title */}
+              {editing ? (
+                <input
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  style={{
+                    fontFamily: FONTS.serif, fontSize: 22, fontWeight: 600,
+                    color: p.text, background: p.inputBg,
+                    border: `1px solid ${p.hairline}`, borderRadius: 14,
+                    padding: '10px 14px', width: '100%',
+                    outline: 'none', marginBottom: 16,
+                  }}
+                  onFocus={e => e.target.style.borderColor = p.accent}
+                  onBlur={e => e.target.style.borderColor = p.hairline}
+                />
+              ) : (
+                <h2 style={{
+                  fontFamily: FONTS.serif, fontSize: 22, fontWeight: 600,
+                  color: p.text, lineHeight: 1.35, marginBottom: 16,
+                }}>
+                  {meta.pinned && <FilterIcon type="pinned" color={p.accent} size={10} />}
+                  {' '}{meta.name || bucket.id}
+                </h2>
+              )}
+
+              {/* Metadata grid */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px',
+                marginBottom: 20,
+                padding: '16px',
+                background: p.inputBg,
+                borderRadius: 16,
+              }}>
+                {metaItems.map((item, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{
+                      fontFamily: FONTS.sans, fontSize: 10.5, fontWeight: 500,
+                      color: p.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px',
+                    }}>{item.label}</span>
+                    <span style={{
+                      fontFamily: item.mono ? FONTS.mono : FONTS.sans,
+                      fontSize: item.mono ? 11 : 12.5,
+                      color: p.text, wordBreak: 'break-all',
+                    }}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Tags edit */}
+              {editing && (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{
+                    fontFamily: FONTS.sans, fontSize: 11, fontWeight: 500,
+                    color: p.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px',
+                    display: 'block', marginBottom: 6,
+                  }}>Tags (逗号分隔)</label>
+                  <input
+                    value={editTags}
+                    onChange={e => setEditTags(e.target.value)}
+                    style={{
+                      fontFamily: FONTS.sans, fontSize: 13,
+                      color: p.text, background: p.inputBg,
+                      border: `1px solid ${p.hairline}`, borderRadius: 12,
+                      padding: '9px 14px', width: '100%', outline: 'none',
+                    }}
+                    onFocus={e => e.target.style.borderColor = p.accent}
+                    onBlur={e => e.target.style.borderColor = p.hairline}
+                  />
+                </div>
+              )}
+
+              {/* Content */}
+              <div style={{
+                background: p.card,
+                borderRadius: 18,
+                padding: '20px',
+                boxShadow: p.shadowSoft,
+                border: p.cardBorder || 'none',
+                marginBottom: 20,
+              }}>
+                <label style={{
+                  fontFamily: FONTS.sans, fontSize: 10.5, fontWeight: 500,
+                  color: p.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px',
+                  display: 'block', marginBottom: 10,
+                }}>Content</label>
+                {editing ? (
+                  <textarea
+                    value={editContent}
+                    onChange={e => setEditContent(e.target.value)}
+                    style={{
+                      width: '100%', minHeight: 200,
+                      fontFamily: FONTS.serif, fontSize: 14.5, lineHeight: 1.7,
+                      color: p.text, background: p.inputBg,
+                      border: `1px solid ${p.hairline}`, borderRadius: 12,
+                      padding: '14px', outline: 'none', resize: 'vertical',
+                    }}
+                    onFocus={e => e.target.style.borderColor = p.accent}
+                    onBlur={e => e.target.style.borderColor = p.hairline}
+                  />
+                ) : (
+                  <div style={{
+                    fontFamily: FONTS.serif, fontSize: 14.5, lineHeight: 1.7,
+                    color: p.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  }}>
+                    {bucket.content || '(empty)'}
+                  </div>
+                )}
+              </div>
+
+              {/* Action buttons */}
+              <div style={{
+                display: 'flex', gap: 8, flexWrap: 'wrap',
+              }}>
+                {editing ? (
+                  <>
+                    <button onClick={saveEdit} disabled={saving} style={actionBtn(true)}>
+                      {saving ? '保存中...' : '保存'}
+                    </button>
+                    <button onClick={() => setEditing(false)} style={actionBtn()}>取消</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={startEdit} style={actionBtn()}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      编辑
+                    </button>
+                    <button
+                      onClick={() => toggleField('pinned', !meta.pinned)}
+                      style={actionBtn()}
+                    >
+                      <FilterIcon type="pinned" color={meta.pinned ? p.accent : p.textMuted} size={9} />
+                      {meta.pinned ? '取消钉选' : '钉选'}
+                    </button>
+                    <button
+                      onClick={() => toggleField('resolved', !meta.resolved)}
+                      style={actionBtn()}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={meta.resolved ? '#6B9B7A' : 'currentColor'} strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      {meta.resolved ? '标记未解决' : '已解决'}
+                    </button>
+                    <button
+                      onClick={() => toggleField('digested', !meta.digested)}
+                      style={actionBtn()}
+                    >
+                      <FilterIcon type="digested" color={meta.digested ? p.accent2 : p.textMuted} size={9} />
+                      {meta.digested ? '取消消化' : '消化'}
+                    </button>
+                    <div style={{ flex: 1 }} />
+                    {!confirmDelete ? (
+                      <button onClick={() => setConfirmDelete(true)} style={{
+                        ...actionBtn(),
+                        color: '#B85C6A', borderColor: '#B85C6A33',
+                      }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                        删除
+                      </button>
+                    ) : (
+                      <>
+                        <button onClick={doDelete} style={{
+                          ...actionBtn(),
+                          background: '#B85C6A', color: '#fff', border: 'none',
+                        }}>
+                          确认删除
+                        </button>
+                        <button onClick={() => setConfirmDelete(false)} style={actionBtn()}>
+                          取消
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Empty State ─────────────────────────────────────────────
+function EmptyState({ searching }) {
+  const p = useTheme();
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', padding: '60px 24px',
+      color: p.textMuted, fontFamily: FONTS.sans,
+    }}>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={p.hairline}
+        strokeWidth="1" strokeLinecap="round" style={{ marginBottom: 16, opacity: 0.6 }}>
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+        <line x1="9" y1="9" x2="9.01" y2="9"/>
+        <line x1="15" y1="9" x2="15.01" y2="9"/>
+      </svg>
+      <span style={{ fontSize: 14, fontWeight: 400 }}>
+        {searching ? '没有找到匹配的记忆' : '还没有记忆'}
+      </span>
+      <span style={{ fontSize: 12, marginTop: 4, opacity: 0.6 }}>
+        {searching ? '试试其他关键词' : '记忆将在这里生长'}
+      </span>
+    </div>
+  );
+}
+
+// ─── Loading State ───────────────────────────────────────────
+function LoadingState() {
+  const p = useTheme();
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', padding: '80px 24px', gap: 12,
+    }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <span style={{
+        display: 'inline-block', width: 24, height: 24,
+        border: `2px solid ${p.hairline}`, borderTopColor: p.accent,
+        borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite',
+      }} />
+      <span style={{
+        fontFamily: FONTS.sans, fontSize: 13, color: p.textMuted,
+      }}>正在唤醒记忆...</span>
+    </div>
+  );
+}
+
+// ─── Error State ─────────────────────────────────────────────
+function ErrorState({ message, onRetry }) {
+  const p = useTheme();
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', padding: '60px 24px', gap: 12,
+    }}>
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#B85C6A"
+        strokeWidth="1.5" strokeLinecap="round" style={{ opacity: 0.6 }}>
+        <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+      </svg>
+      <span style={{ fontFamily: FONTS.sans, fontSize: 14, color: p.text }}>
+        连接失败
+      </span>
+      <span style={{ fontFamily: FONTS.sans, fontSize: 12, color: p.textMuted, textAlign: 'center' }}>
+        {message}
+      </span>
+      {onRetry && (
+        <button onClick={onRetry} style={{
+          marginTop: 8, padding: '8px 20px', borderRadius: 9999,
+          border: `1px solid ${p.hairline}`, background: p.inputBg,
+          color: p.text, fontFamily: FONTS.sans, fontSize: 13,
+          cursor: 'pointer', transition: TRANSITION,
+        }}>重试</button>
+      )}
+    </div>
+  );
+}
+
+// ─── Main App ────────────────────────────────────────────────
+function App() {
+  // Theme
+  const [mode, setMode] = useState(() => {
+    try {
+      return localStorage.getItem('garden-theme') || 'day';
+    } catch { return 'day'; }
+  });
+  const palette = PALETTES[mode];
+
+  const toggleMode = () => {
+    const next = mode === 'day' ? 'night' : 'day';
+    setMode(next);
+    try { localStorage.setItem('garden-theme', next); } catch {}
+  };
+
+  // Data
+  const [buckets, setBuckets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [filter, setFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const [selectedBucket, setSelectedBucket] = useState(null);
+
+  // Fetch all buckets
+  const fetchBuckets = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/buckets');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setBuckets(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchBuckets(); }, [fetchBuckets]);
+
+  // Search
+  const handleSearch = useCallback(async (q) => {
+    setSearchQuery(q);
+    if (!q.trim()) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setSearchResults(data);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }, []);
+
+  // Compute stats
+  const stats = useMemo(() => {
+    const total = buckets.length;
+    const pinned = buckets.filter(b => b.pinned).length;
+    const dynamic = buckets.filter(b => !b.pinned && b.type !== 'feel' && !b.resolved).length;
+    const feel = buckets.filter(b => b.type === 'feel' || (b.domain && b.domain.includes('feel'))).length;
+    const resolved = buckets.filter(b => b.resolved).length;
+    const digested = buckets.filter(b => b.digested).length;
+    return { total, pinned, dynamic, feel, resolved, digested };
+  }, [buckets]);
+
+  // Filter buckets
+  const filteredBuckets = useMemo(() => {
+    // If search active, show search results as bucket-like items
+    if (searchResults !== null) {
+      return searchResults.map(sr => ({
+        ...sr,
+        type: 'dynamic',
+        tags: [],
+        pinned: false,
+        resolved: false,
+        digested: false,
+        created: '',
+        last_active: '',
+        activation_count: 0,
+      }));
+    }
+
+    let list = [...buckets];
+    switch (filter) {
+      case 'pinned':
+        list = list.filter(b => b.pinned);
+        break;
+      case 'feel':
+        list = list.filter(b => b.type === 'feel' || (b.domain && b.domain.includes('feel')));
+        break;
+      case 'unresolved':
+        list = list.filter(b => !b.resolved && !b.pinned);
+        break;
+      case 'digested':
+        list = list.filter(b => b.digested);
+        break;
+      case 'archived':
+        list = list.filter(b => b.resolved && b.digested);
+        break;
+    }
+    return list;
+  }, [buckets, filter, searchResults]);
+
+  return (
+    <ThemeContext.Provider value={palette}>
+      <ToastProvider>
+        <div style={{
+          width: '100%', height: '100vh',
+          background: palette.bgGradient,
+          backgroundAttachment: 'fixed',
+          display: 'flex', justifyContent: 'center',
+          color: palette.text,
+          transition: `background ${TRANSITION}`,
+        }}>
+          <div style={{
+            width: '100%', maxWidth: 800,
+            height: '100vh',
+            display: 'flex', flexDirection: 'column',
+            background: mode === 'day'
+              ? 'rgba(250,247,242,0.5)'
+              : 'rgba(26,26,30,0.5)',
+          }}>
+            <Header
+              stats={stats}
+              mode={mode}
+              onToggleMode={toggleMode}
+              searchQuery={searchQuery}
+              onSearch={handleSearch}
+            />
+
+            <FilterTabs
+              active={filter}
+              onChange={(f) => {
+                setFilter(f);
+                setSearchQuery('');
+                setSearchResults(null);
+              }}
+            />
+
+            {/* Bucket list */}
+            <div style={{
+              flex: 1, overflowY: 'auto',
+              padding: '16px 16px 80px',
+            }}>
+              {loading ? (
+                <LoadingState />
+              ) : error ? (
+                <ErrorState message={error} onRetry={fetchBuckets} />
+              ) : searching ? (
+                <LoadingState />
+              ) : filteredBuckets.length === 0 ? (
+                <EmptyState searching={searchResults !== null} />
+              ) : (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 10,
+                }}>
+                  {filteredBuckets.map((b, i) => (
+                    <BucketCard
+                      key={b.id}
+                      bucket={b}
+                      onClick={setSelectedBucket}
+                    />
+                  ))}
+                  {/* Bottom padding */}
+                  <div style={{ height: 20 }} />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Detail overlay */}
+          {selectedBucket && (
+            <BucketDetail
+              bucketSummary={selectedBucket}
+              onClose={() => setSelectedBucket(null)}
+              onUpdated={fetchBuckets}
+              onDeleted={(id) => {
+                setBuckets(prev => prev.filter(b => b.id !== id));
+              }}
+            />
+          )}
+        </div>
+      </ToastProvider>
+    </ThemeContext.Provider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

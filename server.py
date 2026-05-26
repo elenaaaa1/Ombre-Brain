@@ -1027,6 +1027,64 @@ async def api_bucket_detail(request):
     })
 
 
+@mcp.custom_route("/api/bucket/{bucket_id}", methods=["PUT"])
+async def api_bucket_update(request):
+    """Update bucket content and/or metadata."""
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"]
+    bucket = await bucket_mgr.get(bucket_id)
+    if not bucket:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid json"}, status_code=400)
+    updates = {}
+    if "name" in body and body["name"]:
+        updates["name"] = body["name"]
+    if "content" in body and body["content"]:
+        updates["content"] = body["content"]
+    if "tags" in body:
+        updates["tags"] = [t.strip() for t in body["tags"] if t.strip()] if isinstance(body["tags"], list) else [t.strip() for t in body["tags"].split(",") if t.strip()]
+    if "resolved" in body:
+        updates["resolved"] = bool(body["resolved"])
+    if "pinned" in body:
+        updates["pinned"] = bool(body["pinned"])
+        if body["pinned"]:
+            updates["importance"] = 10
+    if "digested" in body:
+        updates["digested"] = bool(body["digested"])
+    if "valence" in body:
+        updates["valence"] = float(body["valence"])
+    if "arousal" in body:
+        updates["arousal"] = float(body["arousal"])
+    if "importance" in body:
+        updates["importance"] = int(body["importance"])
+    if not updates:
+        return JSONResponse({"error": "no fields to update"}, status_code=400)
+    success = await bucket_mgr.update(bucket_id, **updates)
+    if not success:
+        return JSONResponse({"error": "update failed"}, status_code=500)
+    if "content" in updates:
+        try:
+            await embedding_engine.generate_and_store(bucket_id, updates["content"])
+        except Exception:
+            pass
+    return JSONResponse({"ok": True, "updated": list(updates.keys())})
+
+
+@mcp.custom_route("/api/bucket/{bucket_id}", methods=["DELETE"])
+async def api_bucket_delete(request):
+    """Delete a bucket permanently."""
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"]
+    success = await bucket_mgr.delete(bucket_id)
+    if success:
+        embedding_engine.delete_embedding(bucket_id)
+        return JSONResponse({"ok": True})
+    return JSONResponse({"error": "not found"}, status_code=404)
+
+
 @mcp.custom_route("/api/search", methods=["GET"])
 async def api_search(request):
     """Search buckets by query."""
@@ -1185,6 +1243,19 @@ async def dashboard(request):
             return HTMLResponse(f.read())
     except FileNotFoundError:
         return HTMLResponse("<h1>dashboard.html not found</h1>", status_code=404)
+
+
+@mcp.custom_route("/garden", methods=["GET"])
+async def garden(request):
+    """Serve the Memory Garden (记忆花园) HTML page."""
+    from starlette.responses import HTMLResponse
+    import os
+    garden_path = os.path.join(os.path.dirname(__file__), "garden.html")
+    try:
+        with open(garden_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    except FileNotFoundError:
+        return HTMLResponse("<h1>garden.html not found</h1>", status_code=404)
 
 
 @mcp.custom_route("/api/config", methods=["GET"])
