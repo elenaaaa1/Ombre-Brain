@@ -1258,6 +1258,44 @@ async def garden(request):
         return HTMLResponse("<h1>garden.html not found</h1>", status_code=404)
 
 
+@mcp.custom_route("/app", methods=["GET"])
+async def cotton_candy_index(request):
+    """Serve the Cotton Candy app."""
+    from starlette.responses import HTMLResponse
+    import os
+    index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    except FileNotFoundError:
+        return HTMLResponse("<h1>Cotton Candy not found</h1>", status_code=404)
+
+
+@mcp.custom_route("/app/{path:path}", methods=["GET"])
+async def cotton_candy_static(request):
+    """Serve Cotton Candy static files (JSX, images, etc.)."""
+    from starlette.responses import FileResponse, JSONResponse
+    import os
+    path = request.path_params["path"]
+    if ".." in path:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    file_path = os.path.join(os.path.dirname(__file__), "static", path)
+    if os.path.isfile(file_path):
+        content_types = {
+            ".jsx": "application/javascript",
+            ".js": "application/javascript",
+            ".css": "text/css",
+            ".html": "text/html",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".svg": "image/svg+xml",
+        }
+        ext = os.path.splitext(path)[1].lower()
+        media_type = content_types.get(ext, "application/octet-stream")
+        return FileResponse(file_path, media_type=media_type)
+    return JSONResponse({"error": "not found"}, status_code=404)
+
+
 @mcp.custom_route("/api/config", methods=["GET"])
 async def api_config_get(request):
     """Get current runtime config (safe fields only, API key masked)."""
